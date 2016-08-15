@@ -1,4 +1,4 @@
-from realms import config, create_app, db, __version__, flask_cli as cli
+from realms import config, create_app, db, __version__, cli, cache
 from realms.lib.util import random_string, in_virtualenv, green, yellow, red
 from subprocess import call, Popen
 from multiprocessing import cpu_count
@@ -10,8 +10,11 @@ import pip
 import time
 import subprocess
 
+config = config.conf
+
 # called to discover commands in modules
 app = create_app()
+
 
 def get_user():
     for name in ('SUDO_USER', 'LOGNAME', 'USER', 'LNAME', 'USERNAME'):
@@ -163,6 +166,7 @@ def setup_redis(ctx, **kw):
     config.update(conf)
     install_redis()
 
+
 @click.command()
 @click.option('--elasticsearch-url',
               default=getattr(config, 'ELASTICSEARCH_URL', 'http://127.0.0.1:9200'),
@@ -291,7 +295,8 @@ def configure(json_string):
 
 @cli.command()
 @click.option('--port', default=config.PORT)
-def dev(port):
+@click.option('--host', default=config.HOST)
+def dev(port, host):
     """ Run development server
     """
     green("Starting development server")
@@ -302,7 +307,7 @@ def dev(port):
     else:
         yellow("Using default configuration")
 
-    create_app().run(host="0.0.0.0",
+    create_app().run(host=host,
                      port=port,
                      debug=True)
 
@@ -332,8 +337,8 @@ def start_server():
     if in_virtualenv():
         prefix = get_prefix() + "/bin/"
 
-    Popen("%sgunicorn 'realms:create_app()' -b 0.0.0.0:%s -k gevent %s" %
-          (prefix, config.PORT, flags), shell=True, executable='/bin/bash')
+    Popen("%sgunicorn 'realms:create_app()' -b %s:%s -k gevent %s" %
+          (prefix, config.HOST, config.PORT, flags), shell=True, executable='/bin/bash')
 
 
 def stop_server():
@@ -405,6 +410,15 @@ def drop_db():
     yellow("Dropping all tables")
     with app.app_context():
         db.metadata.drop_all(db.get_engine(app))
+
+
+@cli.command()
+def clear_cache():
+    """ Clears cache
+    """
+    yellow("Clearing the cache")
+    with app.app_context():
+        cache.clear()
 
 
 @cli.command()

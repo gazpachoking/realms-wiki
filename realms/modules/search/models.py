@@ -1,3 +1,4 @@
+import re
 import sys
 
 from flask import g, current_app
@@ -40,9 +41,13 @@ class SimpleSearch(BaseSearch):
         res = []
         for entry in g.current_wiki.get_index():
             name = filename_to_cname(entry['name'])
+            name = re.sub(r"//+", '/', name)
             if set(query.split()).intersection(name.replace('/', '-').split('-')):
                 page = g.current_wiki.get_page(name)
-                res.append(dict(name=name, content=page['data']))
+
+                # this can be None, not sure how
+                if page:
+                    res.append(dict(name=name, content=page.data))
         return res
 
     def users(self, query):
@@ -124,7 +129,7 @@ class WhooshSearch(BaseSearch):
             res = []
             for hit in results:
                 name = hit["path"]
-                page_data = g.current_wiki.get_page(name)["data"].decode("utf-8")
+                page_data = g.current_wiki.get_page(name).data.decode("utf-8")
                 content = hit.highlights('body', text=page_data)
 
                 res.append(dict(name=name, content=content))

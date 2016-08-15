@@ -5,6 +5,8 @@ from flask_oauthlib.client import OAuth
 from realms import config
 from ..models import BaseUser
 
+config = config.conf
+
 oauth = OAuth()
 
 users = {}
@@ -38,7 +40,7 @@ providers = {
         'field_map': {
             'id': 'id',
             'username': 'login',
-            'email': 'email'
+            'email': lambda(data): data.get('email') or data['login'] + '@users.noreply.github.com'
         },
         'token_name': 'access_token'
     },
@@ -116,6 +118,8 @@ class User(BaseUser):
         def get_value(d, key):
             if isinstance(key, basestring):
                 return d.get(key)
+            elif callable(key):
+                return key(d)
             # key should be list here
             val = d.get(key.pop(0))
             if len(key) == 0:

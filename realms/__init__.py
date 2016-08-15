@@ -1,3 +1,4 @@
+import functools
 import sys
 
 # Set default encoding to UTF-8
@@ -17,6 +18,7 @@ from flask.ext.login import LoginManager, current_user
 from flask.ext.sqlalchemy import SQLAlchemy
 from flask.ext.assets import Environment, Bundle
 from flask_ldap_login import LDAPLoginManager
+from functools import update_wrapper
 from werkzeug.routing import BaseConverter
 from werkzeug.exceptions import HTTPException
 from sqlalchemy.ext.declarative import declarative_base
@@ -74,7 +76,9 @@ class Application(Flask):
 
             # Click
             if hasattr(sources, 'commands'):
-                cli.add_command(sources.commands.cli, name=module_name)
+                if sources.commands.cli.name == 'cli':
+                    sources.commands.cli.name = module_name
+                cli.add_command(sources.commands.cli)
 
             # Hooks
             if hasattr(sources, 'hooks'):
@@ -111,11 +115,13 @@ class Assets(Environment):
 
         return super(Assets, self).register(name, Bundle(*args, filters=filters, output=output))
 
+
 class MyLDAPLoginManager(LDAPLoginManager):
     @property
     def attrlist(self):
         # the parent method doesn't always work
         return None
+
 
 class RegexConverter(BaseConverter):
     """ Enables Regex matching on endpoints
@@ -161,7 +167,7 @@ def error_handler(e):
 
 def create_app(config=None):
     app = Application(__name__)
-    app.config.from_object('realms.config')
+    app.config.from_object('realms.config.conf')
     app.url_map.converters['regex'] = RegexConverter
     app.url_map.strict_slashes = False
 
@@ -183,8 +189,11 @@ def create_app(config=None):
         g.assets = dict(css=['main.css'], js=['main.js'])
 
     @app.template_filter('datetime')
-    def _jinja2_filter_datetime(ts):
-        return time.strftime('%b %d, %Y %I:%M %p', time.localtime(ts))
+    def _jinja2_filter_datetime(ts, fmt=None):
+        return time.strftime(
+            fmt or app.config.get('DATETIME_FORMAT', '%b %d, %Y %I:%M %p'),
+            time.localtime(ts)
+        )
 
     @app.template_filter('b64encode')
     def _jinja2_filter_b64encode(s):
@@ -240,8 +249,6 @@ assets.register('main.css',
                 'css/style.css')
 
 
-from functools import update_wrapper
-
 def with_appcontext(f):
     """Wraps a callback so that it's guaranteed to be executed with the
     script's application context.  If callbacks are registered directly
@@ -283,8 +290,8 @@ class AppGroup(click.Group):
         kwargs.setdefault('cls', AppGroup)
         return click.Group.group(self, *args, **kwargs)
 
-flask_cli = AppGroup()
+cli = AppGroup()
 
-@flask_cli.group()
-def cli():
-    pass
+# Decorator to be used in modules instead of click.group
+cli_group = functools.partial(click.group, cls=AppGroup)
+
